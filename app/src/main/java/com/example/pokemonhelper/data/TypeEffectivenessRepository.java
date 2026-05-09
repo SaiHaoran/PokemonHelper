@@ -1,6 +1,7 @@
 package com.example.pokemonhelper.data;
 
 import com.example.pokemonhelper.model.PokemonType;
+import com.example.pokemonhelper.model.PokemonDefenseProfile;
 import com.example.pokemonhelper.model.TypeProfile;
 
 import java.util.ArrayList;
@@ -29,6 +30,55 @@ public final class TypeEffectivenessRepository {
             throw new IllegalArgumentException("Unknown Pokemon type: " + type);
         }
         return profile;
+    }
+
+    public static PokemonDefenseProfile getDefenseProfileFor(List<PokemonType> defenderTypes) {
+        List<PokemonType> takesFourTimesDamageFrom = new ArrayList<>();
+        List<PokemonType> takesDoubleDamageFrom = new ArrayList<>();
+        List<PokemonType> takesHalfDamageFrom = new ArrayList<>();
+        List<PokemonType> takesQuarterDamageFrom = new ArrayList<>();
+        List<PokemonType> immuneTo = new ArrayList<>();
+
+        for (PokemonType attacker : PokemonType.values()) {
+            double multiplier = 1.0;
+            for (PokemonType defender : defenderTypes) {
+                multiplier *= getAttackMultiplier(attacker, defender);
+            }
+
+            if (multiplier == 4.0) {
+                takesFourTimesDamageFrom.add(attacker);
+            } else if (multiplier == 2.0) {
+                takesDoubleDamageFrom.add(attacker);
+            } else if (multiplier == 0.5) {
+                takesHalfDamageFrom.add(attacker);
+            } else if (multiplier == 0.25) {
+                takesQuarterDamageFrom.add(attacker);
+            } else if (multiplier == 0.0) {
+                immuneTo.add(attacker);
+            }
+        }
+
+        return new PokemonDefenseProfile(
+                takesFourTimesDamageFrom,
+                takesDoubleDamageFrom,
+                takesHalfDamageFrom,
+                takesQuarterDamageFrom,
+                immuneTo
+        );
+    }
+
+    public static double getAttackMultiplier(PokemonType attacker, PokemonType defender) {
+        TypeMatchup matchup = MATCHUPS.get(attacker);
+        if (matchup.noDamageTo.contains(defender)) {
+            return 0.0;
+        }
+        if (matchup.doubleDamageTo.contains(defender)) {
+            return 2.0;
+        }
+        if (matchup.halfDamageTo.contains(defender)) {
+            return 0.5;
+        }
+        return 1.0;
     }
 
     private static Map<PokemonType, TypeProfile> buildProfiles() {

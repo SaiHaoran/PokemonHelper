@@ -41,4 +41,13 @@ public enum PokemonType {
     public String getColorHex() {
         return colorHex;
     }
+
+    public static PokemonType fromApiName(String apiName) {
+        for (PokemonType type : values()) {
+            if (type.apiName.equals(apiName)) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("Unknown Pokemon type api name: " + apiName);
+    }
 }

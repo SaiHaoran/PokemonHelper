@@ -1,10 +1,13 @@
 package com.example.pokemonhelper;
 
 import com.example.pokemonhelper.data.TypeEffectivenessRepository;
+import com.example.pokemonhelper.model.PokemonDefenseProfile;
 import com.example.pokemonhelper.model.PokemonType;
 import com.example.pokemonhelper.model.TypeProfile;
 
 import org.junit.Test;
+
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
@@ -31,5 +34,17 @@ public class ExampleUnitTest {
     @Test
     public void allTypesAreAvailable() {
         assertEquals(18, TypeEffectivenessRepository.getAllTypes().size());
+    }
+
+    @Test
+    public void dualTypeDefense_multipliesTypeMatchups() {
+        PokemonDefenseProfile charizard = TypeEffectivenessRepository.getDefenseProfileFor(
+                Arrays.asList(PokemonType.FIRE, PokemonType.FLYING)
+        );
+
+        assertTrue(charizard.getTakesFourTimesDamageFrom().contains(PokemonType.ROCK));
+        assertTrue(charizard.getTakesDoubleDamageFrom().contains(PokemonType.WATER));
+        assertTrue(charizard.getTakesQuarterDamageFrom().contains(PokemonType.BUG));
+        assertTrue(charizard.getImmuneTo().contains(PokemonType.GROUND));
     }
 }
