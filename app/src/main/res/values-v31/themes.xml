@@ -1,0 +1,11 @@
+<resources>
+    <style name="Base.Theme.PokemonHelper" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#FFF8EC</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_pokemon</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FFF8EC</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Theme.PokemonHelper" parent="Base.Theme.PokemonHelper" />
+</resources>
