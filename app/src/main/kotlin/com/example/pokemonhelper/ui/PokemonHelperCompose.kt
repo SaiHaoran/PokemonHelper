@@ -5,16 +5,21 @@ package com.example.pokemonhelper.ui
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +39,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,17 +62,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.pokemonhelper.data.ItemSearchRepository
 import com.example.pokemonhelper.data.PokemonSearchRepository
 import com.example.pokemonhelper.data.TypeEffectivenessRepository
+import com.example.pokemonhelper.model.ItemEntry
 import com.example.pokemonhelper.model.PokemonDefenseProfile
 import com.example.pokemonhelper.model.PokemonEntry
 import com.example.pokemonhelper.model.PokemonType
@@ -87,6 +99,8 @@ private val PokedexRed = Color(0xFFE94343)
 private val SoftBlue = Color(0xFFE5F3FF)
 private val LeafGreen = Color(0xFFEAF7DF)
 private val Honey = Color(0xFFFFD95A)
+private const val PokemonPageSize = 6
+private const val ItemPageSize = 6
 
 @Composable
 private fun PokemonHelperTheme(content: @Composable () -> Unit) {
@@ -128,117 +142,274 @@ private fun PokemonHelperApp() {
     val context = LocalContext.current.applicationContext
     val types = remember { TypeEffectivenessRepository.getAllTypes() }
     val pokemonRepository = remember(context) { PokemonSearchRepository(context) }
-    var currentPage by remember { mutableStateOf(AppPage.HOME) }
+    val itemRepository = remember(context) { ItemSearchRepository(context) }
+    var currentPage by remember { mutableStateOf(AppPage.TYPE) }
     var selectedType by remember { mutableStateOf(types.first()) }
     var mode by remember { mutableStateOf(DetailMode.ATTACK) }
     var pokemonQuery by remember { mutableStateOf("") }
     var pokemonTypeFilter by remember { mutableStateOf<PokemonType?>(null) }
+    var pokemonPageIndex by remember { mutableStateOf(0) }
+    var pokemonPageInput by remember { mutableStateOf("1") }
     var selectedPokemon by remember { mutableStateOf<PokemonEntry?>(null) }
+    var itemQuery by remember { mutableStateOf("") }
+    var itemPageIndex by remember { mutableStateOf(0) }
+    var itemPageInput by remember { mutableStateOf("1") }
+    var selectedItem by remember { mutableStateOf<ItemEntry?>(null) }
     val profile = remember(selectedType) { TypeEffectivenessRepository.getProfile(selectedType) }
     val pokemonResults = remember(pokemonQuery, pokemonTypeFilter) {
-        pokemonRepository.search(pokemonQuery, pokemonTypeFilter, 12)
+        pokemonRepository.search(pokemonQuery, pokemonTypeFilter, 0)
+    }
+    val pokemonPageCount = remember(pokemonResults) {
+        if (pokemonResults.isEmpty()) {
+            1
+        } else {
+            ((pokemonResults.size - 1) / PokemonPageSize) + 1
+        }
+    }
+    val pagedPokemonResults = remember(pokemonResults, pokemonPageIndex) {
+        pokemonResults
+            .drop(pokemonPageIndex * PokemonPageSize)
+            .take(PokemonPageSize)
+    }
+    val itemResults = remember(itemQuery) {
+        itemRepository.search(itemQuery, 0)
+    }
+    val itemPageCount = remember(itemResults) {
+        if (itemResults.isEmpty()) {
+            1
+        } else {
+            ((itemResults.size - 1) / ItemPageSize) + 1
+        }
+    }
+    val pagedItemResults = remember(itemResults, itemPageIndex) {
+        itemResults
+            .drop(itemPageIndex * ItemPageSize)
+            .take(ItemPageSize)
     }
 
-    LaunchedEffect(pokemonResults) {
-        if (selectedPokemon == null || !pokemonResults.contains(selectedPokemon)) {
-            selectedPokemon = pokemonResults.firstOrNull()
+    LaunchedEffect(pokemonQuery, pokemonTypeFilter) {
+        pokemonPageIndex = 0
+    }
+
+    LaunchedEffect(itemQuery) {
+        itemPageIndex = 0
+    }
+
+    LaunchedEffect(pokemonPageCount) {
+        if (pokemonPageIndex >= pokemonPageCount) {
+            pokemonPageIndex = pokemonPageCount - 1
         }
     }
 
-    BackHandler(enabled = currentPage == AppPage.SEARCH) {
-        currentPage = AppPage.HOME
+    LaunchedEffect(itemPageCount) {
+        if (itemPageIndex >= itemPageCount) {
+            itemPageIndex = itemPageCount - 1
+        }
+    }
+
+    LaunchedEffect(pagedPokemonResults) {
+        if (selectedPokemon == null || !pagedPokemonResults.contains(selectedPokemon)) {
+            selectedPokemon = pagedPokemonResults.firstOrNull()
+        }
+    }
+
+    LaunchedEffect(pagedItemResults) {
+        if (selectedItem == null || !pagedItemResults.contains(selectedItem)) {
+            selectedItem = pagedItemResults.firstOrNull()
+        }
+    }
+
+    LaunchedEffect(pokemonPageIndex, pokemonPageCount) {
+        pokemonPageInput = (pokemonPageIndex + 1).toString()
+    }
+
+    LaunchedEffect(itemPageIndex, itemPageCount) {
+        itemPageInput = (itemPageIndex + 1).toString()
+    }
+
+    BackHandler(enabled = currentPage != AppPage.TYPE) {
+        currentPage = AppPage.TYPE
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        AnimatedContent(
-            targetState = currentPage,
-            transitionSpec = {
-                (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.98f))
-                    .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.99f))
-            },
-            label = "app-page"
-        ) { page ->
-            when (page) {
-                AppPage.HOME -> HomePage(
-                    types = types,
-                    selectedType = selectedType,
-                    onTypeSelected = { selectedType = it },
-                    mode = mode,
-                    onModeSelected = { mode = it },
-                    profile = profile,
-                    onSearchClick = { currentPage = AppPage.SEARCH }
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = currentPage,
+                transitionSpec = {
+                    (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.98f))
+                        .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.99f))
+                },
+                label = "app-page"
+            ) { page ->
+                when (page) {
+                    AppPage.TYPE -> TypePage(
+                        types = types,
+                        selectedType = selectedType,
+                        onTypeSelected = { selectedType = it },
+                        mode = mode,
+                        onModeSelected = { mode = it },
+                        profile = profile
+                    )
 
-                AppPage.SEARCH -> SearchPage(
-                    query = pokemonQuery,
-                    onQueryChange = { pokemonQuery = it },
-                    selectedType = pokemonTypeFilter,
-                    onTypeSelected = { pokemonTypeFilter = it },
-                    types = types,
-                    results = pokemonResults,
-                    selectedPokemon = selectedPokemon,
-                    onPokemonSelected = { selectedPokemon = it },
-                    onBackClick = { currentPage = AppPage.HOME }
-                )
+                    AppPage.POKEMON -> PokemonSearchPage(
+                        query = pokemonQuery,
+                        onQueryChange = { pokemonQuery = it },
+                        selectedType = pokemonTypeFilter,
+                        onTypeSelected = { pokemonTypeFilter = it },
+                        types = types,
+                        results = pagedPokemonResults,
+                        totalResultCount = pokemonResults.size,
+                        pageIndex = pokemonPageIndex,
+                        pageCount = pokemonPageCount,
+                        onPreviousPage = {
+                            if (pokemonPageIndex > 0) {
+                                pokemonPageIndex -= 1
+                            }
+                        },
+                        onNextPage = {
+                            if (pokemonPageIndex < pokemonPageCount - 1) {
+                                pokemonPageIndex += 1
+                            }
+                        },
+                        pageInput = pokemonPageInput,
+                        onPageInputChange = { value ->
+                            pokemonPageInput = value.filter { it.isDigit() }.take(4)
+                        },
+                        onPageInputSubmit = {
+                            val requestedPage = pokemonPageInput.toIntOrNull()
+                            if (requestedPage == null) {
+                                pokemonPageInput = (pokemonPageIndex + 1).toString()
+                            } else {
+                                pokemonPageIndex = requestedPage.coerceIn(1, pokemonPageCount) - 1
+                            }
+                        },
+                        selectedPokemon = selectedPokemon,
+                        onPokemonSelected = { selectedPokemon = it }
+                    )
+
+                    AppPage.ITEMS -> ItemSearchPage(
+                        query = itemQuery,
+                        onQueryChange = { itemQuery = it },
+                        results = pagedItemResults,
+                        totalResultCount = itemResults.size,
+                        pageIndex = itemPageIndex,
+                        pageCount = itemPageCount,
+                        onPreviousPage = {
+                            if (itemPageIndex > 0) {
+                                itemPageIndex -= 1
+                            }
+                        },
+                        onNextPage = {
+                            if (itemPageIndex < itemPageCount - 1) {
+                                itemPageIndex += 1
+                            }
+                        },
+                        pageInput = itemPageInput,
+                        onPageInputChange = { value ->
+                            itemPageInput = value.filter { it.isDigit() }.take(4)
+                        },
+                        onPageInputSubmit = {
+                            val requestedPage = itemPageInput.toIntOrNull()
+                            if (requestedPage == null) {
+                                itemPageInput = (itemPageIndex + 1).toString()
+                            } else {
+                                itemPageIndex = requestedPage.coerceIn(1, itemPageCount) - 1
+                            }
+                        },
+                        selectedItem = selectedItem,
+                        onItemSelected = { selectedItem = it }
+                    )
+                }
             }
+            BottomTabBar(
+                currentPage = currentPage,
+                onPageSelected = { currentPage = it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-private fun HomePage(
+private fun TypePage(
     types: List<PokemonType>,
     selectedType: PokemonType,
     onTypeSelected: (PokemonType) -> Unit,
     mode: DetailMode,
     onModeSelected: (DetailMode) -> Unit,
-    profile: TypeProfile,
-    onSearchClick: () -> Unit
+    profile: TypeProfile
 ) {
+    var typePickerExpanded by remember { mutableStateOf(true) }
     PageScaffold {
-        Header()
-        SearchEntryButton(onClick = onSearchClick)
-        TypePicker(
-            types = types,
-            selectedType = selectedType,
-            onTypeSelected = onTypeSelected
+        SectionHeader(
+            title = "属性克制查询",
+            subtitle = "选择属性，查看攻击与防守关系"
         )
-        ModeSwitch(
-            selectedMode = mode,
-            onModeSelected = onModeSelected
-        )
-        AnimatedContent(
-            targetState = profile to mode,
-            transitionSpec = {
-                (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.96f))
-                    .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.98f))
-            },
-            label = "type-detail"
-        ) { (targetProfile, targetMode) ->
-            DetailPanel(profile = targetProfile, mode = targetMode)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TypePicker(
+                    types = types,
+                    selectedType = selectedType,
+                    onTypeSelected = onTypeSelected,
+                    expanded = typePickerExpanded,
+                    onExpandedChange = { typePickerExpanded = it }
+                )
+                ModeSwitch(
+                    selectedMode = mode,
+                    onModeSelected = onModeSelected
+                )
+                AnimatedContent(
+                    targetState = profile to mode,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.96f))
+                            .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.98f))
+                    },
+                    label = "type-detail"
+                ) { (targetProfile, targetMode) ->
+                    DetailPanel(profile = targetProfile, mode = targetMode)
+                }
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun SearchPage(
+private fun PokemonSearchPage(
     query: String,
     onQueryChange: (String) -> Unit,
     selectedType: PokemonType?,
     onTypeSelected: (PokemonType?) -> Unit,
     types: List<PokemonType>,
     results: List<PokemonEntry>,
+    totalResultCount: Int,
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    pageInput: String,
+    onPageInputChange: (String) -> Unit,
+    onPageInputSubmit: () -> Unit,
     selectedPokemon: PokemonEntry?,
-    onPokemonSelected: (PokemonEntry) -> Unit,
-    onBackClick: () -> Unit
+    onPokemonSelected: (PokemonEntry) -> Unit
 ) {
     PageScaffold {
-        SearchTopBar(onBackClick = onBackClick)
+        SectionHeader(
+            title = "宝可梦查询",
+            subtitle = "按名称、编号或属性筛选"
+        )
         PokemonSearchPanel(
             query = query,
             onQueryChange = onQueryChange,
@@ -246,8 +417,56 @@ private fun SearchPage(
             onTypeSelected = onTypeSelected,
             types = types,
             results = results,
+            totalResultCount = totalResultCount,
+            pageIndex = pageIndex,
+            pageCount = pageCount,
+            onPreviousPage = onPreviousPage,
+            onNextPage = onNextPage,
+            pageInput = pageInput,
+            onPageInputChange = onPageInputChange,
+            onPageInputSubmit = onPageInputSubmit,
             selectedPokemon = selectedPokemon,
             onPokemonSelected = onPokemonSelected
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun ItemSearchPage(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    results: List<ItemEntry>,
+    totalResultCount: Int,
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    pageInput: String,
+    onPageInputChange: (String) -> Unit,
+    onPageInputSubmit: () -> Unit,
+    selectedItem: ItemEntry?,
+    onItemSelected: (ItemEntry) -> Unit
+) {
+    PageScaffold {
+        SectionHeader(
+            title = "物品查询",
+            subtitle = "按中文名、英文名、分类或编号搜索"
+        )
+        ItemSearchPanel(
+            query = query,
+            onQueryChange = onQueryChange,
+            results = results,
+            totalResultCount = totalResultCount,
+            pageIndex = pageIndex,
+            pageCount = pageCount,
+            onPreviousPage = onPreviousPage,
+            onNextPage = onNextPage,
+            pageInput = pageInput,
+            onPageInputChange = onPageInputChange,
+            onPageInputSubmit = onPageInputSubmit,
+            selectedItem = selectedItem,
+            onItemSelected = onItemSelected
         )
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -269,6 +488,157 @@ private fun PageScaffold(content: @Composable () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             content()
+            Spacer(modifier = Modifier.height(82.dp))
+        }
+    }
+}
+
+@Composable
+private fun BottomTabBar(
+    currentPage: AppPage,
+    onPageSelected: (AppPage) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(horizontal = 18.dp, vertical = 12.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(8.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        BottomTabButton(
+            page = AppPage.TYPE,
+            currentPage = currentPage,
+            label = "属性",
+            onPageSelected = onPageSelected,
+            modifier = Modifier.weight(1f)
+        )
+        BottomTabButton(
+            page = AppPage.POKEMON,
+            currentPage = currentPage,
+            label = "宝可梦",
+            onPageSelected = onPageSelected,
+            modifier = Modifier.weight(1f)
+        )
+        BottomTabButton(
+            page = AppPage.ITEMS,
+            currentPage = currentPage,
+            label = "物品",
+            onPageSelected = onPageSelected,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun BottomTabButton(
+    page: AppPage,
+    currentPage: AppPage,
+    label: String,
+    onPageSelected: (AppPage) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val selected = page == currentPage
+    Box(
+        modifier = modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(if (selected) PokedexRed else Color.Transparent)
+            .clickable { onPageSelected(page) },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else Color(0xFF6A5D4D),
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    subtitle: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PokeballMark(modifier = Modifier.size(48.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                color = Ink,
+                style = MaterialTheme.typography.headlineLarge
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFF607D8B),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleHeader(
+    title: String,
+    summary: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = Ink,
+                maxLines = 1
+            )
+            AnimatedVisibility(
+                visible = !expanded,
+                enter = expandVertically(animationSpec = tween(140)) + fadeIn(animationSpec = tween(140)),
+                exit = shrinkVertically(animationSpec = tween(100)) + fadeOut(animationSpec = tween(100))
+            ) {
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF78909C),
+                    maxLines = 1
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .height(30.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(if (expanded) Color(0xFFECE4D4) else PokedexRed)
+                .clickable { onExpandedChange(!expanded) }
+                .padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (expanded) "收起" else "展开",
+                color = if (expanded) Color(0xFF6A5D4D) else Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1
+            )
         }
     }
 }
@@ -282,9 +652,19 @@ private fun PokemonSearchPanel(
     onTypeSelected: (PokemonType?) -> Unit,
     types: List<PokemonType>,
     results: List<PokemonEntry>,
+    totalResultCount: Int,
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    pageInput: String,
+    onPageInputChange: (String) -> Unit,
+    onPageInputSubmit: () -> Unit,
     selectedPokemon: PokemonEntry?,
     onPokemonSelected: (PokemonEntry) -> Unit
 ) {
+    var typeFilterExpanded by remember { mutableStateOf(true) }
+    var resultListExpanded by remember { mutableStateOf(true) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -313,12 +693,26 @@ private fun PokemonSearchPanel(
             PokemonTypeFilter(
                 types = types,
                 selectedType = selectedType,
-                onTypeSelected = onTypeSelected
+                onTypeSelected = onTypeSelected,
+                expanded = typeFilterExpanded,
+                onExpandedChange = { typeFilterExpanded = it }
             )
             PokemonResultList(
                 results = results,
+                totalResultCount = totalResultCount,
                 selectedPokemon = selectedPokemon,
-                onPokemonSelected = onPokemonSelected
+                onPokemonSelected = onPokemonSelected,
+                expanded = resultListExpanded,
+                onExpandedChange = { resultListExpanded = it }
+            )
+            PaginationControls(
+                pageIndex = pageIndex,
+                pageCount = pageCount,
+                onPreviousPage = onPreviousPage,
+                onNextPage = onNextPage,
+                pageInput = pageInput,
+                onPageInputChange = onPageInputChange,
+                onPageInputSubmit = onPageInputSubmit
             )
             AnimatedContent(
                 targetState = selectedPokemon,
@@ -342,34 +736,298 @@ private fun PokemonSearchPanel(
 private fun PokemonTypeFilter(
     types: List<PokemonType>,
     selectedType: PokemonType?,
-    onTypeSelected: (PokemonType?) -> Unit
+    onTypeSelected: (PokemonType?) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "按属性筛选",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF78909C)
+        CollapsibleHeader(
+            title = "按属性筛选",
+            summary = selectedType?.displayName ?: "不限",
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
         )
-        val filterItems = listOf<PokemonType?>(null) + types
-        filterItems.chunked(4).forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                rowItems.forEach { type ->
-                    FilterChipTile(
-                        label = type?.displayName ?: "不限",
-                        color = type?.composeColor() ?: Honey,
-                        selected = selectedType == type,
-                        onClick = { onTypeSelected(type) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                repeat(4 - rowItems.size) {
-                    Spacer(modifier = Modifier.weight(1f))
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(160)),
+            exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(120))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val filterItems = listOf<PokemonType?>(null) + types
+                filterItems.chunked(3).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { type ->
+                            FilterChipTile(
+                                label = type?.displayName ?: "不限",
+                                color = type?.composeColor() ?: Honey,
+                                selected = selectedType == type,
+                                onClick = { onTypeSelected(type) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(3 - rowItems.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun ItemSearchPanel(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    results: List<ItemEntry>,
+    totalResultCount: Int,
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    pageInput: String,
+    onPageInputChange: (String) -> Unit,
+    onPageInputSubmit: () -> Unit,
+    selectedItem: ItemEntry?,
+    onItemSelected: (ItemEntry) -> Unit
+) {
+    var resultListExpanded by remember { mutableStateOf(true) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "搜索物品",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink
+            )
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("名称、分类或编号") },
+                placeholder = { Text("大师球 / Potion / Medicine / 1") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                shape = RoundedCornerShape(8.dp)
+            )
+            ItemDetailSection(
+                selectedItem = selectedItem
+            )
+            ItemResultList(
+                results = results,
+                totalResultCount = totalResultCount,
+                selectedItem = selectedItem,
+                onItemSelected = onItemSelected,
+                expanded = resultListExpanded,
+                onExpandedChange = { resultListExpanded = it }
+            )
+            PaginationControls(
+                pageIndex = pageIndex,
+                pageCount = pageCount,
+                onPreviousPage = onPreviousPage,
+                onNextPage = onNextPage,
+                pageInput = pageInput,
+                onPageInputChange = onPageInputChange,
+                onPageInputSubmit = onPageInputSubmit
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun ItemDetailSection(
+    selectedItem: ItemEntry?
+) {
+    AnimatedContent(
+        targetState = selectedItem,
+        transitionSpec = {
+            (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.97f))
+                .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.98f))
+        },
+        label = "item-detail"
+    ) { item ->
+        if (item == null) {
+            EmptyItemState()
+        } else {
+            ItemDetailPanel(item = item)
+        }
+    }
+}
+
+@Composable
+private fun ItemResultList(
+    results: List<ItemEntry>,
+    totalResultCount: Int,
+    selectedItem: ItemEntry?,
+    onItemSelected: (ItemEntry) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CollapsibleHeader(
+            title = "搜索结果 $totalResultCount",
+            summary = selectedItem?.let { "#${it.id} ${it.zhName}" } ?: "未选择",
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
+        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(160)),
+            exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(120))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (results.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(LeafGreen)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "没有找到符合条件的物品",
+                            color = Color(0xFF607D3B),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                } else {
+                    results.chunked(2).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                ItemResultTile(
+                                    item = item,
+                                    selected = item == selectedItem,
+                                    onClick = { onItemSelected(item) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat(2 - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemResultTile(
+    item: ItemEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Color(0xFFFFF0D1) else Color.White)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) Honey else Color(0xFFE8DDBF),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(9.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Text(
+            text = "#${item.id} ${item.zhName}",
+            style = MaterialTheme.typography.titleMedium,
+            color = Ink,
+            maxLines = 1
+        )
+        Text(
+            text = item.enName,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF78909C),
+            maxLines = 1
+        )
+        Text(
+            text = item.category,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF6A5D4D),
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ItemDetailPanel(item: ItemEntry) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFFFFFCF7))
+            .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ItemSpriteImage(item = item, sizeDp = 66)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "#${item.id} ${item.zhName}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Ink
+                )
+                Text(
+                    text = item.enName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF78909C)
+                )
+                Text(
+                    text = "${item.category} · ₽${item.cost}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF6A5D4D)
+                )
+            }
+        }
+        Text(
+            text = if (item.bestEffectText.isEmpty()) "PokeAPI 暂无该物品的功能说明。" else item.bestEffectText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Ink
+        )
+    }
+}
+
+@Composable
+private fun EmptyItemState() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(LeafGreen)
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = "选择一个物品后会显示它的分类、价格和功能说明",
+            color = Color(0xFF607D3B),
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
@@ -410,48 +1068,222 @@ private fun FilterChipTile(
 @Composable
 private fun PokemonResultList(
     results: List<PokemonEntry>,
+    totalResultCount: Int,
     selectedPokemon: PokemonEntry?,
-    onPokemonSelected: (PokemonEntry) -> Unit
+    onPokemonSelected: (PokemonEntry) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "搜索结果 ${results.size}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF78909C)
+        CollapsibleHeader(
+            title = "搜索结果 $totalResultCount",
+            summary = selectedPokemon?.let { "#${it.id} ${it.zhName}" } ?: "未选择",
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
         )
-        if (results.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(LeafGreen)
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = "没有找到符合条件的宝可梦",
-                    color = Color(0xFF607D3B),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else {
-            results.chunked(2).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    rowItems.forEach { pokemon ->
-                        PokemonResultTile(
-                            pokemon = pokemon,
-                            selected = pokemon == selectedPokemon,
-                            onClick = { onPokemonSelected(pokemon) },
-                            modifier = Modifier.weight(1f)
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(160)),
+            exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(120))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (results.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(LeafGreen)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "没有找到符合条件的宝可梦",
+                            color = Color(0xFF607D3B),
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
-                    repeat(2 - rowItems.size) {
-                        Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    results.chunked(2).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowItems.forEach { pokemon ->
+                                PokemonResultTile(
+                                    pokemon = pokemon,
+                                    selected = pokemon == selectedPokemon,
+                                    onClick = { onPokemonSelected(pokemon) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            repeat(2 - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PaginationControls(
+    pageIndex: Int,
+    pageCount: Int,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    pageInput: String,
+    onPageInputChange: (String) -> Unit,
+    onPageInputSubmit: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(8.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PageButton(
+            label = "上一页",
+            enabled = pageIndex > 0,
+            onClick = onPreviousPage,
+            modifier = Modifier.weight(1f)
+        )
+        BasicTextField(
+            value = pageInput,
+            onValueChange = onPageInputChange,
+            modifier = Modifier
+                .weight(0.72f)
+                .height(36.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(CardWhite)
+                .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(7.dp))
+                .padding(horizontal = 10.dp),
+            textStyle = MaterialTheme.typography.titleMedium.copy(
+                color = Ink,
+                textAlign = TextAlign.Center
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { onPageInputSubmit() }
+            ),
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    innerTextField()
+                }
+            }
+        )
+        PageButton(
+            label = "下一页",
+            enabled = pageIndex < pageCount - 1,
+            onClick = onNextPage,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun PageButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(if (enabled) PokedexRed else Color(0xFFECE4D4))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color.White else Color(0xFF9E9385),
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun PokemonSpriteImage(
+    pokemon: PokemonEntry,
+    sizeDp: Int
+) {
+    AssetImage(
+        assetPath = pokemon.spriteAssetPath,
+        contentDescription = pokemon.zhName,
+        sizeDp = sizeDp,
+        fallback = {
+            PokeballMark(modifier = Modifier.size((sizeDp * 0.58f).dp))
+        }
+    )
+}
+
+@Composable
+private fun ItemSpriteImage(
+    item: ItemEntry,
+    sizeDp: Int
+) {
+    AssetImage(
+        assetPath = item.spriteAssetPath,
+        contentDescription = item.zhName,
+        sizeDp = sizeDp,
+        fallback = {
+            ItemMark(
+                modifier = Modifier.size((sizeDp * 0.58f).dp),
+                color = item.categoryIconColor()
+            )
+        }
+    )
+}
+
+@Composable
+private fun AssetImage(
+    assetPath: String,
+    contentDescription: String,
+    sizeDp: Int,
+    fallback: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+    val bitmap = remember(assetPath) {
+        try {
+            context.assets.open(assetPath).use { stream ->
+                BitmapFactory.decodeStream(stream)?.asImageBitmap()
+            }
+        } catch (exception: Exception) {
+            null
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(SoftBlue),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap == null) {
+            fallback()
+        } else {
+            Image(
+                bitmap = bitmap,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp),
+                contentScale = ContentScale.Fit
+            )
         }
     }
 }
@@ -466,30 +1298,30 @@ private fun PokemonResultTile(
     val accent = pokemon.types.first().composeColor()
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(7.dp))
             .background(if (selected) Color(0xFFFFF0D1) else Color(0xFFFFFFFF))
             .border(
-                width = if (selected) 2.dp else 1.dp,
+                width = 1.dp,
                 color = if (selected) accent else Color(0xFFE8DDBF),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(7.dp)
             )
             .clickable(onClick = onClick)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 7.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
             text = "#${pokemon.id} ${pokemon.zhName}",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
             color = Ink,
             maxLines = 1
         )
         Text(
             text = pokemon.enName,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF78909C),
             maxLines = 1
         )
-        CompactTypeBadges(types = pokemon.types)
+        ResultTypeBadges(types = pokemon.types)
     }
 }
 
@@ -509,9 +1341,10 @@ private fun PokemonDefensePanel(pokemon: PokemonEntry) {
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            PokemonSpriteImage(pokemon = pokemon, sizeDp = 74)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -618,74 +1451,6 @@ private fun Header() {
 }
 
 @Composable
-private fun SearchEntryButton(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(PokedexRed)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SearchMark(modifier = Modifier.size(24.dp), color = Color.White)
-        Text(
-            text = "搜索宝可梦",
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = "名称 / 属性",
-            color = Color.White.copy(alpha = 0.82f),
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
-
-@Composable
-private fun SearchTopBar(onBackClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.White)
-                .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(8.dp))
-                .clickable(onClick = onBackClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "<",
-                color = Ink,
-                style = MaterialTheme.typography.titleLarge
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = "搜索宝可梦",
-                color = Ink,
-                style = MaterialTheme.typography.headlineLarge
-            )
-            Text(
-                text = "按名称、编号或属性筛选",
-                color = Color(0xFF607D8B),
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
-    }
-}
-
-@Composable
 private fun PokeballMark(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val stroke = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
@@ -711,22 +1476,27 @@ private fun PokeballMark(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SearchMark(
+private fun ItemMark(
     modifier: Modifier = Modifier,
-    color: Color = Ink
+    color: Color = Honey
 ) {
     Canvas(modifier = modifier) {
         val strokeWidth = 3.dp.toPx()
+        drawCircle(color = color, radius = size.minDimension * 0.42f)
         drawCircle(
-            color = color,
-            radius = size.minDimension * 0.3f,
-            center = Offset(size.width * 0.42f, size.height * 0.42f),
+            color = Ink,
+            radius = size.minDimension * 0.42f,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
+        drawCircle(
+            color = Color.White,
+            radius = size.minDimension * 0.18f,
+            center = Offset(size.width * 0.42f, size.height * 0.4f)
+        )
         drawLine(
-            color = color,
-            start = Offset(size.width * 0.64f, size.height * 0.64f),
-            end = Offset(size.width * 0.9f, size.height * 0.9f),
+            color = Ink,
+            start = Offset(size.width * 0.34f, size.height * 0.68f),
+            end = Offset(size.width * 0.66f, size.height * 0.68f),
             strokeWidth = strokeWidth,
             cap = StrokeCap.Round
         )
@@ -737,26 +1507,24 @@ private fun SearchMark(
 private fun TypePicker(
     types: List<PokemonType>,
     selectedType: PokemonType,
-    onTypeSelected: (PokemonType) -> Unit
+    onTypeSelected: (PokemonType) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = CardWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CollapsibleHeader(
+            title = "选择属性",
+            summary = selectedType.displayName,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
+        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(160)),
+            exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(120))
         ) {
-            Text(
-                text = "选择属性",
-                style = MaterialTheme.typography.titleMedium,
-                color = Ink
-            )
             Column(
-                modifier = Modifier
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 types.chunked(3).forEach { rowTypes ->
@@ -801,7 +1569,7 @@ private fun TypeTile(
     Box(
         modifier = modifier
             .scale(scale)
-            .height(34.dp)
+            .height(32.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(background)
             .border(
@@ -816,7 +1584,7 @@ private fun TypeTile(
         Text(
             text = type.displayName,
             color = contentColor,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             maxLines = 1
         )
@@ -860,21 +1628,19 @@ private fun ModeSwitch(
 
 @Composable
 private fun DetailPanel(profile: TypeProfile, mode: DetailMode) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = CardWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFFFFFCF7))
+            .border(1.dp, Color(0xFFE8DDBF), RoundedCornerShape(8.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            DetailTitle(type = profile.type)
-            when (mode) {
-                DetailMode.ATTACK -> AttackRelations(profile)
-                DetailMode.DEFENSE -> DefenseRelations(profile)
-            }
+        DetailTitle(type = profile.type)
+        when (mode) {
+            DetailMode.ATTACK -> AttackRelations(profile)
+            DetailMode.DEFENSE -> DefenseRelations(profile)
         }
     }
 }
@@ -1076,14 +1842,41 @@ private fun CompactTypeBadges(types: List<PokemonType>) {
     }
 }
 
+@Composable
+private fun ResultTypeBadges(types: List<PokemonType>) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        types.forEach { type ->
+            val color = type.composeColor()
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(color)
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = type.displayName,
+                    color = color.readableTextColor(),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
 private enum class DetailMode(val label: String) {
     ATTACK("攻击视角"),
     DEFENSE("防守视角")
 }
 
 private enum class AppPage {
-    HOME,
-    SEARCH
+    TYPE,
+    POKEMON,
+    ITEMS
 }
 
 private fun PokemonType.composeColor(): Color {
@@ -1092,4 +1885,21 @@ private fun PokemonType.composeColor(): Color {
 
 private fun Color.readableTextColor(): Color {
     return if (luminance() > 0.56f) Ink else Color.White
+}
+
+private fun ItemEntry.categoryIconColor(): Color {
+    val normalizedCategory = category.lowercase()
+    return when {
+        "ball" in normalizedCategory -> PokedexRed
+        "medicine" in normalizedCategory ||
+                "healing" in normalizedCategory ||
+                "revival" in normalizedCategory -> LeafGreen
+        "berry" in normalizedCategory -> Color(0xFFFFA7B7)
+        "machine" in normalizedCategory -> Color(0xFF8EC5FF)
+        "evolution" in normalizedCategory -> Color(0xFFC8B6FF)
+        "battle" in normalizedCategory || "stat" in normalizedCategory -> Color(0xFFFFB066)
+        "held" in normalizedCategory || "choice" in normalizedCategory || "jewels" in normalizedCategory -> Color(0xFFBDE0FE)
+        "key" in normalizedCategory -> Honey
+        else -> Honey
+    }
 }

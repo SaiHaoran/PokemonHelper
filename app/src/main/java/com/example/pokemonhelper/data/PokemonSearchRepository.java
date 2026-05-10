@@ -32,7 +32,7 @@ public final class PokemonSearchRepository {
                 continue;
             }
             results.add(entry);
-            if (results.size() >= limit) {
+            if (limit > 0 && results.size() >= limit) {
                 break;
             }
         }

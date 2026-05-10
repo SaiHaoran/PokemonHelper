@@ -44,4 +44,8 @@ public final class PokemonEntry {
     public List<PokemonType> getTypes() {
         return types;
     }
+
+    public String getSpriteAssetPath() {
+        return "pokemon_sprites/" + id + ".png";
+    }
 }
